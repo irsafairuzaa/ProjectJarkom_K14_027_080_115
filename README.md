@@ -426,3 +426,258 @@ ip route 0.0.0.0 0.0.0.0 10.113.224.129
 3. Perangkat pengguna (PC dan smartphone) masih memakai IP statis sementara, dan akan diganti ke DHCP pada soal 4. Server tetap statis.
 4. Port Gig9/0 di R-UTARA dikosongkan untuk link L7 pada file OSPF (soal 7).
 5. LAN CCTV Kota mendapat DHCP dari server di LAN Server dan Storage DC, bukan dari router.
+
+## 5. Soal 4: DHCP
+
+### 5.1 Rancangan
+
+- Semua interface router dan server memakai IP statis. Perangkat pengguna (PC dan smartphone) mendapat IP, gateway, dan DNS otomatis.
+- DNS yang dibagikan: `10.112.160.2` (SRV-DC, LAN Server dan Storage DC).
+- Setiap pool mengecualikan `.1` sampai `.10` (gateway dan cadangan alamat statis). Alamat pertama yang dibagikan `.11`, jadi tidak bentrok dengan IP statis.
+- LAN Server (Balai Kota dan DC) tidak memakai DHCP karena isinya server berIP statis.
+- LAN CCTV Kota dilayani server DHCP di SRV-DC, bukan router. R-DC meneruskan permintaan dengan `ip helper-address`.
+
+IP statis yang dipakai:
+
+| Perangkat | IP | Gateway |
+|---|---|---|
+| SRV-DC | `10.112.160.2/24` | `10.112.160.1` |
+| SRV-BALAIKOTA | `10.112.200.2/27` | `10.112.200.1` |
+| SRV-GOOGLE | `8.8.8.8/24` | `8.8.8.1` |
+
+SRV-BALAIKOTA sebelumnya memakai `10.112.192.2/21`, bentrok dengan PC Pegawai. IP-nya diperbaiki ke tabel di atas.
+
+### 5.2 Tabel pool
+
+| Dilayani oleh | Nama pool | Network | Gateway |
+|---|---|---|---|
+| R-PUSAT | PEGAWAI | 10.112.192.0/21 | 10.112.192.1 |
+| R-UTARA | WIFI-UTARA | 10.112.0.0/18 | 10.112.0.1 |
+| R-UTARA | SENSOR-UTARA | 10.112.64.0/23 | 10.112.64.1 |
+| R-BARAT | WIFI-BARAT | 10.113.0.0/19 | 10.113.0.1 |
+| R-BARAT | PUSKESMAS-BARAT | 10.113.32.0/24 | 10.113.32.1 |
+| R-TIMUR | WIFI-TIMUR | 10.113.64.0/19 | 10.113.64.1 |
+| R-TIMUR | BANJIR-TIMUR | 10.113.96.0/22 | 10.113.96.1 |
+| R-SELATAN | WIFI-SELATAN | 10.113.128.0/19 | 10.113.128.1 |
+| R-SELATAN | PJU-SELATAN | 10.113.160.0/25 | 10.113.160.1 |
+| R-PELABUHAN | SCADA-PELABUHAN | 10.113.192.0/19 | 10.113.192.1 |
+| R-PELABUHAN | KANTOR-PELABUHAN | 10.113.224.0/25 | 10.113.224.1 |
+| SRV-DC | CCTV | 10.112.128.0/19 | 10.112.128.1 |
+
+### 5.3 Konfigurasi
+
+Pola pool di router (contoh R-UTARA, LAN Sensor):
+
+```
+ip dhcp excluded-address 10.112.64.1 10.112.64.10
+ip dhcp pool SENSOR-UTARA
+ network 10.112.64.0 255.255.254.0
+ default-router 10.112.64.1
+ dns-server 10.112.160.2
+```
+
+LAN CCTV, di SRV-DC (Services → DHCP): pool `CCTV`, gateway `10.112.128.1`, DNS `10.112.160.2`, start IP `10.112.128.11`, mask `255.255.224.0`, maksimum 500 pengguna.
+
+Relay di R-DC, sisi LAN CCTV:
+
+```
+interface FastEthernet0/0
+ ip helper-address 10.112.160.2
+```
+
+Permintaan DHCP dari PC CCTV berupa broadcast, yang tidak diteruskan router. `ip helper-address` mengubahnya menjadi unicast ke SRV-DC, yang ada di LAN lain pada R-DC yang sama.
+
+### 5.4 Bukti pengujian
+
+Setiap PC dan smartphone diatur ke DHCP, lalu `ipconfig /all` menampilkan alamat dari pool.
+
+Pegawai Balai Kota mendapat IP dari R-PUSAT
+<img width="1157" height="547" alt="4a_dhcp_pegawai" src="https://github.com/user-attachments/assets/c72b1942-d617-4b33-9308-594991a3840d" />
+
+
+CCTV Kota mendapat IP dari SRV-DC lewat relay (DHCP Servers: 10.112.160.2)
+<img width="1448" height="641" alt="4b_dhcp_cctv_relay" src="https://github.com/user-attachments/assets/b0a3e1ba-b35e-496d-bee1-7024bc86e8e7" />
+
+
+Smartphone WiFi mendapat IP dari pool wilayahnya
+<img width="1907" height="1072" alt="4c_dhcp_wifi" src="https://github.com/user-attachments/assets/48cb33bd-6444-4dc5-be6e-dc61ba6e8d42" />
+
+---
+
+## 6. Soal 5: NAT
+
+### 6.1 Rancangan
+
+Semua wilayah mengakses `8.8.8.8` memakai satu IP publik milik R-PUSAT (`203.0.113.57`). R-ISP tidak punya rute ke blok privat, jadi balasan hanya bisa kembali lewat terjemahan NAT di R-PUSAT.
+
+### 6.2 Konfigurasi (R-PUSAT)
+
+```
+ip access-list standard NAT-INSIDE
+ permit 10.112.0.0 0.1.255.255
+interface GigabitEthernet0/0
+ ip nat outside
+interface GigabitEthernet0/1
+ ip nat inside
+interface GigabitEthernet0/2
+ ip nat inside
+interface Vlan11
+ ip nat inside
+interface Vlan13
+ ip nat inside
+interface Vlan14
+ ip nat inside
+interface Vlan15
+ ip nat inside
+interface Vlan20
+ ip nat inside
+ip nat inside source list NAT-INSIDE interface GigabitEthernet0/0 overload
+```
+
+- `10.112.0.0/15` mencakup seluruh blok privat kelompok (hasil CIDR soal 2).
+- `overload` membuat banyak host berbagi satu IP publik dengan membedakan nomor port.
+- `Gi0/0` (arah R-ISP) adalah `outside`, tujuh interface lainnya `inside`.
+
+### 6.3 Bukti pengujian
+
+Sebelum NAT, `ping 8.8.8.8` dari PC Pegawai gagal 100%, sedangkan ping dari R-PUSAT sendiri berhasil. Sesudah NAT, ping dari semua wilayah berhasil.
+
+Ping 8.8.8.8 gagal sebelum NAT
+<img width="492" height="278" alt="5a_ping_sebelum_nat" src="https://github.com/user-attachments/assets/784a27bc-13d4-4a6e-bf37-5484b2868861" />
+
+
+Ping 8.8.8.8 berhasil sesudah NAT dan tabel terjemahan (show ip nat translations)
+<img width="1037" height="257" alt="5b_nat_translations" src="https://github.com/user-attachments/assets/c5935876-a1db-4a74-977a-2eb48b466045" />
+
+
+Tabel routing R-ISP: hanya dua rute connected, tanpa blok 10.x
+<img width="597" height="267" alt="5c_risp_route" src="https://github.com/user-attachments/assets/fff4c87f-a1d1-4f35-8008-e4d75af57a98" />
+
+---
+
+## 7. Soal 6: Tunnel GRE
+
+### 7.1 Perubahan perangkat
+
+Router-PT tidak mendukung tunnel (`interface tunnel 0` ditolak). Karena tunnel butuh dua ujung, R-PUSAT dan R-PELABUHAN diganti ke Cisco 2911, yang menerima perintah tunnel. Router lain tidak berubah.
+
+- **R-PELABUHAN**: 2911 tanpa modul (3 port Gigabit bawaan cukup).
+- **R-PUSAT**: butuh 8 port routed, sedangkan 2911 hanya punya 3. Ditambah dua modul `HWIC-4ESW`, dan lima link/LAN memakai port switch dengan SVI (`interface vlan`).
+
+Pemetaan port R-PELABUHAN:
+
+| Fungsi | Port | IP |
+|---|---|---|
+| L6 ke R-UTARA | Gi0/0 | 10.113.224.130/30 |
+| LAN SCADA | Gi0/1 | 10.113.192.1/19 |
+| LAN Kantor | Gi0/2 | 10.113.224.1/25 |
+
+Pemetaan port R-PUSAT:
+
+| Fungsi | Port fisik | Interface IP | IP |
+|---|---|---|---|
+| ke R-ISP | Gi0/0 | Gi0/0 | 203.0.113.57/30 |
+| L2 ke R-UTARA | Gi0/1 | Gi0/1 | 10.112.66.1/30 |
+| LAN Pegawai | Gi0/2 | Gi0/2 | 10.112.192.1/21 |
+| L1 ke R-DC | Fa0/2/0 | Vlan11 | 10.112.161.1/30 |
+| L3 ke R-SELATAN | Fa0/2/1 | Vlan13 | 10.113.160.129/30 |
+| L4 ke R-TIMUR | Fa0/2/2 | Vlan14 | 10.113.100.1/30 |
+| L5 ke R-BARAT | Fa0/2/3 | Vlan15 | 10.113.33.1/30 |
+| LAN Server Balai Kota | Fa0/3/0 | Vlan20 | 10.112.200.1/27 |
+
+Konfigurasi lama (IP, rute static, DHCP, NAT) dipasang ulang di router baru dengan nama port yang baru.
+
+### 7.2 Konfigurasi tunnel
+
+| | R-PUSAT | R-PELABUHAN |
+|---|---|---|
+| IP tunnel | 192.168.14.1/30 | 192.168.14.2/30 |
+| Sumber | Gi0/1 (10.112.66.1) | Gi0/0 (10.113.224.130) |
+| Tujuan | 10.113.224.130 | 10.112.66.1 |
+
+```
+! R-PUSAT
+interface Tunnel0
+ ip address 192.168.14.1 255.255.255.252
+ tunnel source GigabitEthernet0/1
+ tunnel destination 10.113.224.130
+ tunnel mode gre ip
+ip route 10.113.192.0 255.255.224.0 192.168.14.2
+ip route 10.113.224.0 255.255.255.128 192.168.14.2
+
+! R-PELABUHAN
+interface Tunnel0
+ ip address 192.168.14.2 255.255.255.252
+ tunnel source GigabitEthernet0/0
+ tunnel destination 10.112.66.1
+ tunnel mode gre ip
+ip route 10.112.192.0 255.255.248.0 192.168.14.1
+ip route 10.112.200.0 255.255.255.224 192.168.14.1
+```
+
+`tunnel source` harus berupa nama interface. Jika ditulis sebagai alamat IP, Packet Tracer menampilkan `Tunnel source UNKNOWN` dan protokol tunnel tetap `down`.
+
+### 7.3 Mengapa router memilih tunnel
+
+Tabel routing R-PUSAT punya dua rute ke Pelabuhan:
+
+| Rute | Next hop | Prefix |
+|---|---|---|
+| 10.113.192.0/18 | R-UTARA (10.112.66.2) | /18 |
+| 10.113.192.0/19 dan 10.113.224.0/25 | tunnel (192.168.14.2) | lebih panjang |
+
+Router memilih rute dengan prefix paling panjang (paling spesifik), jadi lalu lintas ke LAN SCADA dan Kantor lewat tunnel. Rute `/18` lewat R-UTARA tetap ada, tapi hanya dipakai jika tidak ada yang lebih spesifik. Di R-PELABUHAN, dua rute ke Balai Kota (`/21` dan `/27`) lebih spesifik daripada default route, jadi arah baliknya juga lewat tunnel.
+
+Alamat tujuan tunnel (`10.113.224.130` dan `10.112.66.1`) tidak tercakup rute tunnel, jadi tunnel tidak membungkus dirinya sendiri.
+
+### 7.4 Mengapa GRE tidak mengenkripsi
+
+GRE hanya membungkus paket asli dengan header IP baru. Isi paket tetap utuh dan terbaca oleh siapa pun di jalur, termasuk R-UTARA yang dilewati. Enkripsi butuh protokol lain, misalnya IPsec. Bonus IPsec tidak dikerjakan.
+
+### 7.5 Bukti pengujian
+
+Jalur Balai Kota ke Pelabuhan sebelum tunnel melewati R-UTARA (`10.112.66.2`). Sesudah tunnel, hop R-UTARA hilang dan hop berganti menjadi alamat tunnel.
+
+Tracert sebelum tunnel: melewati R-UTARA
+<img width="415" height="225" alt="6a_tracert_sebelum png" src="https://github.com/user-attachments/assets/3cce174c-19a3-444b-9d37-fd031b07912b" />
+
+Konfigurasi tunnel dan status up/up di R-PUSAT dan R-PELABUHAN
+<img width="567" height="237" alt="6b_tunnel_up" src="https://github.com/user-attachments/assets/3818658a-11be-4436-a775-9cdd815766ac" />
+
+Tracert Balai Kota ke Pelabuhan lewat 192.168.14.2
+<img width="422" height="123" alt="6c_tracert_balaikota_pelabuhan" src="https://github.com/user-attachments/assets/0fa2287a-0dde-44da-85c1-f68647fcb04b" />
+
+Tracert Pelabuhan ke Balai Kota lewat 192.168.14.1
+<img width="427" height="131" alt="6d_tracert_pelabuhan_balaikota" src="https://github.com/user-attachments/assets/7261bfbf-8dd7-4b46-8a16-fc5e3080781b" />
+
+
+### 7.6 Catatan
+
+- Lalu lintas dari Pelabuhan ke internet tidak simetris: permintaan lewat R-UTARA (default route), tetapi balasannya pulang lewat tunnel karena R-PUSAT punya rute spesifik ke Pelabuhan. Ini tetap berfungsi karena NAT di R-PUSAT bekerja dua arah (TTL ping dari LAN SCADA ke 8.8.8.8 menjadi 125, bukan 124).
+- Konfigurasi semua router sudah disimpan (`copy running-config startup-config`). Setelah R-PUSAT di-restart, semua interface, tunnel, dan rute kembali dari NVRAM.
+
+---
+
+## 8. Catatan untuk anggota yang melanjutkan (soal 7 dan 8)
+
+### Pembaruan catatan sebelumnya
+
+Catatan "soal 4 sampai 8" di akhir bagian 4 sebagian sudah tidak berlaku:
+
+- **Tabel port (bagian 2.5)** tidak lagi berlaku untuk **R-PUSAT** dan **R-PELABUHAN**, karena keduanya diganti ke Cisco 2911. Pemetaan baru ada di bagian 7.1. Router lain tidak berubah.
+- **Perangkat pengguna** (PC dan smartphone) sekarang memakai **DHCP**. Hanya server yang statis.
+- **LAN CCTV** sudah dilayani DHCP dari SRV-DC lewat relay di R-DC (bagian 5.3).
+- **Port Gig9/0 di R-UTARA** tetap dikosongkan untuk link L7 di file OSPF (soal 7).
+
+### Untuk soal 7 (OSPF)
+
+- Rute static ke Pelabuhan lewat tunnel (`10.113.192.0/19` dan `10.113.224.0/25` via `192.168.14.2`) dan alamat tujuan tunnel (`10.113.224.130` dan `10.112.66.1`) harus tetap terjangkau setelah rute static diganti OSPF. Jangan sampai OSPF mengiklankan alamat tunnel lewat tunnel itu sendiri.
+- R-PUSAT sekarang 2911 dengan interface `Vlan11`, `Vlan13`, `Vlan14`, `Vlan15`, dan `Vlan20`. Gunakan nama itu di perintah `network` dan `passive-interface`.
+
+### Untuk soal 8 (layanan aplikasi)
+
+- Server yang tersedia: **SRV-DC** `10.112.160.2/24` (gateway `10.112.160.1`) dan **SRV-BALAIKOTA** `10.112.200.2/27` (gateway `10.112.200.1`).
+- DHCP sudah membagikan DNS `10.112.160.2` ke semua PC dan smartphone. Service DNS, HTTP, FTP, dan Email di server belum dikonfigurasi.
+- Pembagian server yang disarankan: DNS dan FTP di SRV-DC (sesuai soal), web di SRV-BALAIKOTA.
+- **Jangan matikan service DHCP di SRV-DC**, karena melayani LAN CCTV.
+- Jangan ubah IP server tanpa menyesuaikan pool DHCP dan record DNS.
