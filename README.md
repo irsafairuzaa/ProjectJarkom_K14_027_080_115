@@ -17,8 +17,8 @@
 | Static route di R-PUSAT | 1 route per LAN (sekitar 12 route) | 1 route per router (6 route) |
 | Static route R-UTARA ke R-PELABUHAN | 2 route | 1 route |
 
-
 Kita memilih CIDR agar tiap router mendapat satu blok utuh yang berisi semua LAN dan link miliknya. Maka dari itu, route jadi lebih ringkas dan lebih mudah ditelusuri/ mempercepat pencarian kesalahan. Pilihan CIDR ini mengorbankan efisiensi alamatnya untuk routing yang ringkas.
+
 ---
 
 ## 2. Soal 1: Perancangan topologi
