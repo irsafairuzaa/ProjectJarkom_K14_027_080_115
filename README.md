@@ -681,3 +681,323 @@ Catatan "soal 4 sampai 8" di akhir bagian 4 sebagian sudah tidak berlaku:
 - Pembagian server yang disarankan: DNS dan FTP di SRV-DC (sesuai soal), web di SRV-BALAIKOTA.
 - **Jangan matikan service DHCP di SRV-DC**, karena melayani LAN CCTV.
 - Jangan ubah IP server tanpa menyesuaikan pool DHCP dan record DNS.
+
+## 7. Soal 7: OSPF dan Redundansi Link
+
+### 7.1 Aturan
+
+1. Menambahkan link cadangan L7 antara R-DC dan R-UTARA.
+2. Mengganti seluruh static route antar-router dengan OSPF.
+3. Router tidak mengirim pesan OSPF ke arah LAN pengguna.
+4. Default route internet hanya dikonfigurasi di R-PUSAT. Router lain mendapatkannya secara otomatis melalui OSPF.
+5. Jika salah satu link backbone terputus, konektivitas harus pulih secara otomatis melalui jalur alternatif.
+
+### 7.2 Alamat Link L7
+
+| Link | Menghubungkan | Network | Router pertama | Router kedua |
+|---|---|---|---|---|
+| L7 | R-DC dan R-UTARA | 10.112.161.4/30 | 10.112.161.5 (R-DC) | 10.112.161.6 (R-UTARA) |
+
+Subnet mask: `255.255.255.252`.
+
+### 7.3 Konfigurasi Link L7
+
+**R-DC**
+
+```cisco
+enable
+configure terminal
+interface FastEthernet8/0
+ ip address 10.112.161.5 255.255.255.252
+ no shutdown
+end
+```
+
+**R-UTARA**
+
+```cisco
+enable
+configure terminal
+interface FastEthernet6/0
+ ip address 10.112.161.6 255.255.255.252
+ no shutdown
+end
+```
+
+### 7.4 Konfigurasi OSPF
+
+Seluruh router menggunakan OSPF process ID 1 dan area 0. Perintah `passive-interface default` mencegah pengiriman pesan OSPF ke LAN pengguna. Hanya interface yang menghubungkan antar-router yang diaktifkan kembali.
+
+**R-PUSAT**
+
+```cisco
+configure terminal
+router ospf 1
+ router-id 1.1.1.1
+ passive-interface default
+ no passive-interface GigabitEthernet0/1
+ no passive-interface Vlan11
+ no passive-interface Vlan13
+ no passive-interface Vlan14
+ no passive-interface Vlan15
+ network 10.0.0.0 0.255.255.255 area 0
+ default-information originate
+end
+```
+
+**R-DC**
+
+```cisco
+configure terminal
+router ospf 1
+ router-id 2.2.2.2
+ passive-interface default
+ no passive-interface GigabitEthernet9/0
+ no passive-interface FastEthernet8/0
+ network 10.0.0.0 0.255.255.255 area 0
+end
+```
+
+**R-UTARA**
+
+```cisco
+configure terminal
+router ospf 1
+ router-id 3.3.3.3
+ passive-interface default
+ no passive-interface GigabitEthernet7/0
+ no passive-interface FastEthernet0/0
+ no passive-interface FastEthernet6/0
+ network 10.0.0.0 0.255.255.255 area 0
+end
+```
+
+**R-BARAT**
+
+```cisco
+configure terminal
+router ospf 1
+ router-id 4.4.4.4
+ passive-interface default
+ no passive-interface FastEthernet0/0
+ network 10.0.0.0 0.255.255.255 area 0
+end
+```
+
+**R-TIMUR**
+
+```cisco
+configure terminal
+router ospf 1
+ router-id 5.5.5.5
+ passive-interface default
+ no passive-interface FastEthernet0/0
+ network 10.0.0.0 0.255.255.255 area 0
+end
+```
+
+**R-SELATAN**
+
+```cisco
+configure terminal
+router ospf 1
+ router-id 6.6.6.6
+ passive-interface default
+ no passive-interface FastEthernet0/0
+ network 10.0.0.0 0.255.255.255 area 0
+end
+```
+
+**R-PELABUHAN**
+
+```cisco
+configure terminal
+router ospf 1
+ router-id 7.7.7.7
+ passive-interface default
+ no passive-interface GigabitEthernet0/0
+ network 10.0.0.0 0.255.255.255 area 0
+end
+```
+
+### 7.5 Pengaturan Default Route
+
+R-PUSAT tetap menggunakan static default route menuju ISP, kemudian mendistribusikannya melalui OSPF.
+
+**R-PUSAT**
+
+```cisco
+ip route 0.0.0.0 0.0.0.0 203.0.113.58
+
+router ospf 1
+ default-information originate
+```
+
+Static default route pada router lainnya dihapus agar menggunakan default route yang dipelajari melalui OSPF.
+
+| Router | Perintah |
+|---|---|
+| R-DC | `no ip route 0.0.0.0 0.0.0.0 10.112.161.1` |
+| R-UTARA | `no ip route 0.0.0.0 0.0.0.0 10.112.66.1` |
+| R-BARAT | `no ip route 0.0.0.0 0.0.0.0 10.113.33.1` |
+| R-TIMUR | `no ip route 0.0.0.0 0.0.0.0 10.113.100.1` |
+| R-SELATAN | `no ip route 0.0.0.0 0.0.0.0 10.113.160.129` |
+| R-PELABUHAN | `no ip route 0.0.0.0 0.0.0.0 10.113.224.129` |
+
+Static route antar-router lama juga dihapus agar seluruh routing internal menggunakan OSPF. Static default route R-PUSAT menuju ISP tetap dipertahankan.
+
+### 7.6 Verifikasi OSPF
+
+Periksa adjacency antar-router:
+
+```cisco
+show ip ospf neighbor
+```
+
+Status neighbor yang berhasil terbentuk adalah `FULL`.
+
+Periksa interface OSPF:
+
+```cisco
+show ip ospf interface brief
+```
+
+Periksa routing table:
+
+```cisco
+show ip route
+```
+
+Router selain R-PUSAT harus menerima default route OSPF dengan kode:
+
+```text
+O*E2 0.0.0.0/0
+```
+
+### 7.7 Pengujian Redundansi Link (Failover)
+
+Pengujian dilakukan dengan memutus link utama L1 antara R-DC dan R-PUSAT. Jalur alternatif yang digunakan adalah:
+
+`R-DC → R-UTARA → R-PUSAT`
+
+**1. Pastikan konektivitas awal**
+
+Dari R-DC:
+
+```cisco
+ping 10.112.66.1
+```
+
+**2. Putuskan link utama L1**
+
+Pada R-DC:
+
+```cisco
+configure terminal
+interface GigabitEthernet9/0
+ shutdown
+end
+```
+
+**3. Tunggu OSPF melakukan reconvergence**
+
+Periksa routing table:
+
+```cisco
+show ip route
+```
+
+Kemudian lakukan ping kembali dari R-DC ke interface R-PUSAT yang terhubung dengan R-UTARA:
+
+```cisco
+ping 10.112.66.1
+```
+
+Ping harus tetap berhasil meskipun link langsung R-DC ke R-PUSAT terputus, karena trafik dialihkan melalui L7 dan R-UTARA.
+
+**4. Pulihkan link utama**
+
+Pada R-DC:
+
+```cisco
+configure terminal
+interface GigabitEthernet9/0
+ no shutdown
+end
+```
+
+### 7.8 Kesimpulan
+
+Dengan OSPF, seluruh router dapat mempelajari rute jaringan secara otomatis tanpa static route antar-router. Link L7 menyediakan jalur cadangan antara R-DC dan R-UTARA. Ketika link utama L1 terputus, OSPF melakukan reconvergence sehingga komunikasi antara R-DC dan R-PUSAT tetap dapat berlangsung melalui jalur alternatif.
+
+---
+
+## 9. Soal 8: Layanan Aplikasi
+
+### 9.1 Rancangan
+
+Domain yang dipakai adalah `smartcity.sby`. Semua perangkat pengguna sudah mendapat DNS `10.112.160.2` dari DHCP (soal 4), sehingga tidak ada konfigurasi tambahan di router maupun di sisi client.
+
+| Layanan | Server | IP |
+|---|---|---|
+| DNS dan FTP | SRV-DC (LAN Server dan Storage DC) | `10.112.160.2` |
+| Web dan Email | SRV-BALAIKOTA (LAN Server Balai Kota) | `10.112.200.2` |
+
+Service DHCP di SRV-DC tetap menyala karena melayani LAN CCTV Kota.
+
+### 9.2 Konfigurasi
+
+**a. DNS (SRV-DC → Services → DNS → On)**
+
+| Name | Type | Address |
+|---|---|---|
+| `www.smartcity.sby` | A | `10.112.200.2` |
+| `ftp.smartcity.sby` | A | `10.112.160.2` |
+| `mail.smartcity.sby` | A | `10.112.200.2` |
+
+**b. Web (SRV-BALAIKOTA → Services → HTTP → On)**
+
+Isi `index.html` diganti dengan:
+
+```html
+<html>
+<head><title>Portal SmartCity Surabaya</title></head>
+<body>
+<h1>Portal SmartCity Surabaya</h1>
+<p>Kelompok K14</p>
+</body>
+</html>
+```
+
+**c. FTP (SRV-DC → Services → FTP → On)**
+
+Akun `cctv` (password `cctv14`) dibuat dengan permission Write, Read, Delete, Rename, dan List, supaya perangkat CCTV dapat mengunggah dan mengubah file. Akun bawaan `cisco` dihapus.
+
+**d. Email (SRV-BALAIKOTA → Services → EMAIL)**
+
+SMTP dan POP3 dinyalakan, domain `smartcity.sby`, lalu dibuat dua user:
+
+| User | Password | Dipakai di |
+|---|---|---|
+| `pegawai` | `pegawai14` | PC Pegawai Balai Kota |
+| `pelabuhan` | `pelabuhan14` | PC Kantor Pelabuhan |
+
+Di tiap PC (Desktop → Email → Configure Mail), alamat diisi `user@smartcity.sby`, sedangkan incoming dan outgoing server diisi `mail.smartcity.sby`.
+
+### 9.3 Masalah yang ditemui
+
+PC LAN CCTV awalnya tidak bisa ping maupun FTP ke SRV-DC. `ipconfig /all` menunjukkan alamat `169.254.x.x`, artinya DHCP gagal, bukan masalah OSPF. Tabel routing R-DC sudah benar, karena kedua LAN terhubung langsung ke R-DC. Setelah pool CCTV di SRV-DC dan `ip helper-address` di R-DC diperiksa, PC mendapat IP `10.112.128.x` dan FTP berhasil.
+
+### 9.4 Bukti pengujian
+
+DNS dari PC: `nslookup www.smartcity.sby` menghasilkan `10.112.200.2`
+<!-- tempel screenshot nslookup -->
+
+Web Browser membuka `http://www.smartcity.sby` dan menampilkan "Portal SmartCity Surabaya" dengan Kelompok K14
+<!-- tempel screenshot web -->
+
+FTP dari PC CCTV: login akun `cctv`, `put rekaman.txt`, lalu `dir`
+<!-- tempel screenshot ftp -->
+
+Email terkirim dan diterima dua arah antara PC Pegawai Balai Kota dan PC Kantor Pelabuhan
+<!-- tempel screenshot email -->
