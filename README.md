@@ -147,21 +147,7 @@ Aturan penggabungan:
 - Prefix sama → prefix dikurangi 1
 - Prefix berbeda → ambil prefix terkecil (blok terbesar), lalu kurangi 1
 
-```
-Root /15 (131.072)
-├── P1 /16
-│   ├── R-UTARA /17 = WiFi Utara /18 + [Sensor LL /23 + L2 /30 → /22]
-│   └── A /17
-│       ├── R-DC /18 = CCTV /19 + [Server DC /24 + L1 /30 → /23]
-│       └── R-PUSAT /20 = Pegawai /21 + Server Balai Kota /27
-└── P2 /16
-    ├── B /17
-    │   ├── R-BARAT /18 = WiFi Barat /19 + [Puskesmas /24 + L5 /30 → /23]
-    │   └── R-TIMUR /18 = WiFi Timur /19 + [Sensor Banjir /22 + L4 /30 → /21]
-    └── C /17
-        ├── R-SELATAN /18 = WiFi Selatan /19 + [PJU /25 + L3 /30 → /24]
-        └── R-PELABUHAN /18 = SCADA /19 + [Kantor /25 + L6 /30 → /24]
-```
+<img width="921" height="1030" alt="Pohon CIDR" src="https://github.com/user-attachments/assets/15d141cc-7b15-4c17-a752-a50647f9bffe" />
 
 ### 3.5 Supernet per router
 
