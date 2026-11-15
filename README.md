@@ -121,7 +121,7 @@ Setiap Access Point memakai SSID berbeda (`WIFI-BARAT`, `WIFI-UTARA`, `WIFI-TIMU
 
 ### 3.1 Dasar perhitungan
 
-**Alamat dasar (soal 1a).** Oktet ke-2 = 8 × K = 8 × 14 = 112, jadi base network `10.112.0.0/8`.
+**Alamat dasar** Oktet ke-2 = 8 × K = 8 × 14 = 112, jadi base network `10.112.0.0/8`.
 
 **Rumus kebutuhan alamat:**
 
