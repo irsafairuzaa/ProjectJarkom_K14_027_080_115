@@ -419,14 +419,6 @@ interface GigabitEthernet6/0
 ip route 0.0.0.0 0.0.0.0 10.113.224.129
 ```
 
-### Catatan untuk anggota yang melanjutkan (soal 4 sampai 8)
-
-1. Gunakan file `.pkt` terbaru dan simpan salinan sebelum mengubah apa pun.
-2. Gunakan tabel port di bagian 2.5, karena nama interface yang sama dipakai untuk DHCP, NAT, dan GRE.
-3. Perangkat pengguna (PC dan smartphone) masih memakai IP statis sementara, dan akan diganti ke DHCP pada soal 4. Server tetap statis.
-4. Port Gig9/0 di R-UTARA dikosongkan untuk link L7 pada file OSPF (soal 7).
-5. LAN CCTV Kota mendapat DHCP dari server di LAN Server dan Storage DC, bukan dari router.
-
 ## 5. Soal 4: DHCP
 
 ### 5.1 Rancangan
