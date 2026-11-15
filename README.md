@@ -1,5 +1,12 @@
 # Dokumentasi Mid-Project Jarkom
 
+| Nama | NRP |
+| ------------------ | ----------- |
+| Yuan Banny Albyan | 5027241027 |
+| Reyhan Adi Satrio | 5027251080 |
+| Irsa Fairuza | 5027251115 |
+
+
 **Kelompok:** K14
 **Skema yang dipakai:** CIDR
 **Base network:** `10.112.0.0` (oktet ke-2 = 8 × 14 = 112)
